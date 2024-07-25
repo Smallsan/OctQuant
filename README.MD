@@ -29,6 +29,10 @@ The program constructs an octree where each node represents a color or a range o
 
 Below are examples showing the results of the octree color quantization algorithm at different tree depths, along with their performance metrics. The original image size is 171kb.
 
+### Original Image
+
+![Original Image](examples/original.png)
+
 ### Depth 1
 
 ![Depth 1](examples/depth_1.png)
