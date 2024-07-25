@@ -1,4 +1,4 @@
-package octreequant
+package main
 
 import (
 	"fmt"
