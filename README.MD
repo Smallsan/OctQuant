@@ -33,6 +33,8 @@ Below are examples showing the results of the octree color quantization algorith
 
 ![Original Image](examples/original.png)
 
+- **Size**: 171kb
+
 ### Depth 1
 
 ![Depth 1](examples/depth_1.png)
