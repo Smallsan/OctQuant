@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -9,6 +8,8 @@ import (
 	// "time"
 )
 
+
+// OctreeNode represents a node in the octree palette.
 type OctreeNode struct {
 	isLeaf       bool
 	colorCount   int
@@ -19,15 +20,20 @@ type OctreeNode struct {
 	paletteIndex int
 }
 
+// Octree represents an octree data structure used for color quantization.
 type Octree struct {
-	root       *OctreeNode
-	colorDepth int
-	leafCount  int
-	reducible  [8]*OctreeNode
-	palette    []color.Color
+	root       *OctreeNode    // root is a pointer to the root node of the octree.
+	colorDepth int            // colorDepth represents the number of bits used to represent each color component.
+	leafCount  int            // leafCount represents the number of leaf nodes in the octree.
+	reducible  [8]*OctreeNode // reducible is an array of pointers to reducible nodes in the octree.
+	palette    []color.Color  // palette is a slice that stores the color palette generated from the octree.
 }
 
 
+
+// NewOctree creates a new Octree with the specified color depth.
+// The color depth determines the number of bits used to represent each color channel.
+// Higher color depth allows for more accurate color representation but requires more memory.
 func NewOctree(colorDepth int) *Octree {
 	return &Octree{
 		root:       &OctreeNode{},
@@ -35,49 +41,72 @@ func NewOctree(colorDepth int) *Octree {
 	}
 }
 
+// BuildTree builds an octree from the given image.
+// It iterates over each pixel in the image and inserts the color into the octree.
+// It also prints the color at position (0, x) if y is 0 and x is less than 10.
 func BuildTree(img image.Image, octree *Octree) {
+	// Retrieves the bounds of an image in order to determine the range of pixels to iterate over.
     bounds := img.Bounds()
+	// Iterates over each pixel within the bounds.
     for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
         for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			// Retrieves the color of the pixel at the specified position.
             color := img.At(x, y)
+			// Inserts the color into the octree.
             octree.InsertColor(color)
-            if y == 0 && x < 10 {
+			// Prints the first 10 colors of the first row. (Debugging)
+            /* if y == 0 && x < 10 {
                 fmt.Printf("Color at (0,%d): %v\n", x, color)
             }
+				*/
         }
     }
 }
 
+// InsertColor inserts a color into the Octree.
+// It takes a color.Color as input and inserts it into the Octree data structure.
+// The color is converted to RGBA format and then inserted into the appropriate node in the Octree.
+// If the Octree exceeds the maximum number of colors, it will be reduced.
 func (o *Octree) InsertColor(c color.Color) {
     const maxDepth = 8
     const maxColors = 256
 
+	// Converts the color to RGBA format.
     rgba := color.RGBAModel.Convert(c).(color.RGBA)
     r, g, b := rgba.R, rgba.G, rgba.B
 
+	// Initializes the current node to the root of the Octree.
     currentNode := o.root
+	// Initializes the bit mask to the highest bit of the color depth.
     bitMask := 1 << (maxDepth - 1)
 
+	// Iterates over the color depth and the maximum depth to insert the color into the Octree.
 	for level := 0; level < o.colorDepth && level < maxDepth; level++ {
+		// Calculates the index of the child node based on the color components and the bit mask.
 		index := ((int(r) & bitMask) >> (maxDepth - 3 - level)) |
 				 ((int(g) & bitMask) >> (maxDepth - 2 - level)) |
 				 ((int(b) & bitMask) >> (maxDepth - 1 - level))
 	
+				 // If the child node is nil, it creates a new node and adds it to the reducible list if it is not a leaf node.
 		if currentNode.children[index] == nil {
 			currentNode.children[index] = &OctreeNode{}
+			// If the current level is less than the maximum depth, it adds the child node to the reducible list.
 			if level < maxDepth-1 {
                 o.reducible[level+1] = currentNode.children[index]
             }
+			// If the current level is equal to the maximum depth minus one, it increments the leaf count.
             if level == maxDepth-1 {
                 o.leafCount++
             }
         }
-
+// Updates the current node to the child node at the calculated index and shifts the bit mask to the right.
         currentNode = currentNode.children[index]
+		// Updates the bit mask by shifting it to the right.
         bitMask >>= 1
     }
 
-    if !currentNode.isLeaf {
+	// If the current node is not a leaf node, it marks it as a leaf node and increments the leaf count.
+  if !currentNode.isLeaf {
         currentNode.isLeaf = true
     }
     currentNode.colorCount++
@@ -85,11 +114,16 @@ func (o *Octree) InsertColor(c color.Color) {
     currentNode.greenTotal += int(g)
     currentNode.blueTotal += int(b)
 
+	// If the leaf count exceeds the maximum number of colors, it reduces the Octree.
     if o.leafCount > maxColors {
         o.Reduce()
     }
 }
 
+// Reduce reduces the octree by merging nodes until the leaf count is less than or equal to 256.
+// It iterates through the reducible nodes in reverse order and merges them if they are not nil.
+// After merging, it updates the total color values and color count of the merged node.
+// Finally, it marks the merged node as a leaf and increments the leaf count.
 func (o *Octree) Reduce() {
 	for o.leafCount > 256 {
 		var levelToReduce int
@@ -124,11 +158,17 @@ func (o *Octree) Reduce() {
 	}
 }
 
+// BuildPalette builds the color palette for the Octree.
+// It initializes the palette slice and calls the buildPaletteRecursive method to populate it.
 func (o *Octree) BuildPalette() {
 	o.palette = make([]color.Color, 0, 256)
 	o.buildPaletteRecursive(o.root)
 }
 
+// buildPaletteRecursive recursively builds the color palette for the Octree.
+// It traverses the Octree and calculates the average color for each leaf node.
+// If the palette already contains 256 colors, the function stops adding new colors.
+// The calculated average color is added to the palette and the palette index is assigned to the node.
 func (o *Octree) buildPaletteRecursive(node *OctreeNode) {
 	if node == nil {
 		return
@@ -152,6 +192,9 @@ func (o *Octree) buildPaletteRecursive(node *OctreeNode) {
 	}
 }
 
+// GetPaletteIndex returns the palette index for a given color.
+// It traverses the octree to find the leaf node corresponding to the color,
+// and returns the palette index stored in that node.
 func (o *Octree) GetPaletteIndex(c color.Color) int {
 	rgba := color.RGBAModel.Convert(c).(color.RGBA)
 	r, g, b := rgba.R, rgba.G, rgba.B
@@ -182,6 +225,8 @@ func (o *Octree) GetPaletteIndex(c color.Color) int {
 }
 
 
+// ConvertToPaletted converts the given image to a paletted image using the Octree's palette.
+// It returns a pointer to the converted paletted image.
 func (o *Octree) ConvertToPaletted(img image.Image) *image.Paletted {
 	bounds := img.Bounds()
 	palettedImage := image.NewPaletted(bounds, o.palette)
