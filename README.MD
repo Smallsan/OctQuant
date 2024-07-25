@@ -1,4 +1,5 @@
 # Hexadecary Tree Color Quantization in Go
+(Faster than golang's std brute force approach)
 
 This Go program demonstrates the implementation of a hexadecary tree (16-ary tree) color quantization algorithm. The algorithm is designed to reduce the number of colors in an image more efficiently than the traditional octree method, making it suitable for formats that support a limited color palette, such as GIFs or 8-bit PNGs. The goal is to preserve the visual fidelity of the original image as much as possible while reducing the color count.
 
