@@ -25,6 +25,38 @@ The program constructs an octree where each node represents a color or a range o
 - **Octree**: Manages the octree structure, including insertion of colors, reduction of the tree, and palette generation.
 - **Main Function**: Handles image loading, octree construction, palette building, image conversion, and saving the converted image.
 
+## Image Examples and Performance
+
+Below are examples showing the results of the octree color quantization algorithm at different tree depths, along with their performance metrics. The original image size is 171kb.
+
+### Depth 1
+
+![Depth 1](examples/depth_1.png)
+
+- **Total execution time**: 19.0033ms
+- **Reduced size**: 10kb
+
+### Depth 2
+
+![Depth 2](examples/depth_2.png)
+
+- **Total execution time**: 19.0033ms
+- **Reduced size**: 17kb
+
+### Depth 3
+
+![Depth 3](examples/depth_3.png)
+
+- **Total execution time**: 32.7629ms
+- **Reduced size**: 27kb
+
+### Depth 4
+
+![Depth 4](examples/depth_4.png)
+
+- **Total execution time**: 45.066ms
+- **Reduced size**: 29kb
+
 ## Dependencies
 
 - The program uses the standard Go library for image processing (`image`, `image/color`, `image/png`).
