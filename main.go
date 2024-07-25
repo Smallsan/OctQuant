@@ -1,4 +1,4 @@
-package main
+package octreequant
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
-	"time"
+	// "time"
 )
 
 type OctreeNode struct {
@@ -33,6 +33,19 @@ func NewOctree(colorDepth int) *Octree {
 		root:       &OctreeNode{},
 		colorDepth: colorDepth,
 	}
+}
+
+func BuildTree(img image.Image, octree *Octree) {
+    bounds := img.Bounds()
+    for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+        for x := bounds.Min.X; x < bounds.Max.X; x++ {
+            color := img.At(x, y)
+            octree.InsertColor(color)
+            if y == 0 && x < 10 {
+                fmt.Printf("Color at (0,%d): %v\n", x, color)
+            }
+        }
+    }
 }
 
 func (o *Octree) InsertColor(c color.Color) {
@@ -168,6 +181,7 @@ func (o *Octree) GetPaletteIndex(c color.Color) int {
 	return 0
 }
 
+
 func (o *Octree) ConvertToPaletted(img image.Image) *image.Paletted {
 	bounds := img.Bounds()
 	palettedImage := image.NewPaletted(bounds, o.palette)
@@ -181,7 +195,7 @@ func (o *Octree) ConvertToPaletted(img image.Image) *image.Paletted {
 }
 
 func main() {
-    start := time.Now()
+    // start := time.Now()
 
     file, err := os.Open("rem.png")
     if err != nil {
@@ -192,36 +206,29 @@ func main() {
     if err != nil {
         panic(err)
     }
-    fmt.Printf("Image loading took: %v\n", time.Since(start))
+    // fmt.Printf("Image loading took: %v\n", time.Since(start))
 
-    octreeStart := time.Now()
+    // octreeStart := time.Now()
     octree := NewOctree(4)
-    bounds := img.Bounds()
-    for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-        for x := bounds.Min.X; x < bounds.Max.X; x++ {
-            color := img.At(x, y)
-            octree.InsertColor(color)
-            if y == 0 && x < 10 {
-                fmt.Printf("Color at (0,%d): %v\n", x, color)
-            }
-        }
-    }
-    fmt.Printf("Octree insertion took: %v\n", time.Since(octreeStart))
+	BuildTree(img, octree)
 
-    buildPaletteStart := time.Now()
+    // fmt.Printf("Octree insertion took: %v\n", time.Since(octreeStart))
+
+    // buildPaletteStart := time.Now()
     octree.BuildPalette()
-    fmt.Printf("Building palette took: %v\n", time.Since(buildPaletteStart))
-
+    // fmt.Printf("Building palette took: %v\n", time.Since(buildPaletteStart))
+/*
     fmt.Printf("Palette built with %d colors\n", len(octree.palette))
     for i, color := range octree.palette {
         fmt.Printf("Palette[%d] = %v\n", i, color)
     }
+		*/
 
-    convertStart := time.Now()
+    // convertStart := time.Now()
     palettedImage := octree.ConvertToPaletted(img)
-    fmt.Printf("Converting to paletted image took: %v\n", time.Since(convertStart))
+    // fmt.Printf("Converting to paletted image took: %v\n", time.Since(convertStart))
 
-    saveStart := time.Now()
+    // saveStart := time.Now()
     outFile, err := os.Create("rem_paletted.png")
     if err != nil {
         panic(err)
@@ -231,7 +238,7 @@ func main() {
     if err != nil {
         panic(err)
     }
-    fmt.Printf("Saving paletted image took: %v\n", time.Since(saveStart))
+    // fmt.Printf("Saving paletted image took: %v\n", time.Since(saveStart))
 
-    fmt.Printf("Total execution time: %v\n", time.Since(start))
+    // fmt.Printf("Total execution time: %v\n", time.Since(start))
 }

@@ -1,5 +1,4 @@
 # Octree Color Quantization in Go
-## Still trying to fix depth 4-8, I know there's a part I don't understand well, but I'm trying to fix it.
 
 This Go program demonstrates the implementation of an octree color quantization algorithm. The algorithm is designed to reduce the number of colors in an image, making it suitable for formats that support a limited color palette, such as GIFs or 8-bit PNGs. The goal is to preserve the visual fidelity of the original image as much as possible while reducing the color count.
 
@@ -24,6 +23,39 @@ The program constructs an octree where each node represents a color or a range o
 - **OctreeNode**: Represents a node in the octree. Leaf nodes store color information, while non-leaf nodes are used for navigation.
 - **Octree**: Manages the octree structure, including insertion of colors, reduction of the tree, and palette generation.
 - **Main Function**: Handles image loading, octree construction, palette building, image conversion, and saving the converted image.
+
+## Sampe Usage
+
+```go
+    file, err := os.Open("input.png")
+    if err != nil {
+        panic(err)
+    }
+
+    defer file.Close()
+    img, err := png.Decode(file)
+    if err != nil {
+        panic(err)
+    }
+
+    octree := NewOctree(4)
+
+    BuildTree(img, octree)
+
+    octree.BuildPalette()
+
+    palettedImage := octree.ConvertToPaletted(img)
+
+    outFile, err := os.Create("output.png")
+    if err != nil {
+        panic(err)
+    }
+    defer outFile.Close()
+    err = png.Encode(outFile, palettedImage)
+    if err != nil {
+        panic(err)
+    }
+```
 
 ## Image Examples and Performance
 
