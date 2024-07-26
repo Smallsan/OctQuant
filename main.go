@@ -26,7 +26,7 @@ type HexadecaryTree struct {
 	palette    []color.Color
 }
 
-func NewOctree(colorDepth int) *HexadecaryTree {
+func NewHexaTree(colorDepth int) *HexadecaryTree {
 	return &HexadecaryTree{
 		root:       &HexadecaryNode{},
 		colorDepth: colorDepth,
@@ -220,23 +220,23 @@ func main() {
     // fmt.Printf("Image loading took: %v\n", time.Since(start))
 
     // octreeStart := time.Now()
-    octree := NewOctree(3)
-	BuildTree(img, octree)
+    hexaTree := NewHexaTree(3)
+	BuildTree(img, hexaTree)
 
-    // fmt.Printf("Octree insertion took: %v\n", time.Since(octreeStart))
+    // fmt.Printf("hexaTree insertion took: %v\n", time.Since(hexaTreeStart))
 
     // buildPaletteStart := time.Now()
-    octree.BuildPalette()
+    hexaTree.BuildPalette()
     // fmt.Printf("Building palette took: %v\n", time.Since(buildPaletteStart))
 /*
-    fmt.Printf("Palette built with %d colors\n", len(octree.palette))
-    for i, color := range octree.palette {
+    fmt.Printf("Palette built with %d colors\n", len(hexaTree.palette))
+    for i, color := range hexaTree.palette {
         fmt.Printf("Palette[%d] = %v\n", i, color)
     }
 		*/
 
     // convertStart := time.Now()
-    palettedImage := octree.ConvertToPaletted(img)
+    palettedImage := hexaTree.ConvertToPaletted(img)
     // fmt.Printf("Converting to paletted image took: %v\n", time.Since(convertStart))
 
     // saveStart := time.Now()

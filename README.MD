@@ -40,13 +40,13 @@ The program constructs a hexadecary tree where each node represents a color or a
         panic(err)
     }
 
-    octree := NewOctree(4)
+    hexaTree := NewHexaTree(4)
 
-    BuildTree(img, octree)
+    BuildTree(img, hexaTree)
 
-    octree.BuildPalette()
+    hexaTree.BuildPalette()
 
-    palettedImage := octree.ConvertToPaletted(img)
+    palettedImage := hexaTree.ConvertToPaletted(img)
 
     outFile, err := os.Create("output.png")
     if err != nil {
