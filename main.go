@@ -1,239 +1,302 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 )
 
-type HexadecaryNode struct {
-	isLeaf       bool
-	colorCount   int
-	redTotal     int
-	greenTotal   int
-	blueTotal    int
-	alphaTotal   int
-	children     [16]*HexadecaryNode
-	paletteIndex int
+type Color struct {
+    Red, Green, Blue int
 }
 
-type HexadecaryTree struct {
-	root       *HexadecaryNode
-	colorDepth int
-	leafCount  int
-	reducible  [16]*HexadecaryNode
-	palette    []color.Color
+type OctreeNode struct {
+    Color        Color
+    PixelCount   int
+    PaletteIndex int
+    Children     [8]*OctreeNode
 }
 
-func NewHexaTree(colorDepth int) *HexadecaryTree {
-	return &HexadecaryTree{
-		root:       &HexadecaryNode{},
-		colorDepth: colorDepth,
-	}
+const MaxDepth = 8
+
+type OctreeQuantizer struct {
+    Levels map[int][]*OctreeNode
+    Root   *OctreeNode
 }
 
-func BuildTree(img image.Image, octree *HexadecaryTree) {
-    bounds := img.Bounds()
-    minX, minY, maxX, maxY := bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Max.Y
+func NewColor(red, green, blue int) Color {
+    return Color{Red: red, Green: green, Blue: blue}
+}
 
-    for y := minY; y < maxY; y++ {
-        for x := minX; x < maxX; x++ {
-            color := img.At(x, y)
-            octree.InsertColor(color)
-        }
+func NewOctreeNode(level int, parent *OctreeQuantizer) *OctreeNode {
+    node := &OctreeNode{
+        Color: Color{0, 0, 0},
     }
+    if level < MaxDepth-1 {
+        parent.AddLevelNode(level, node)
+    }
+    return node
 }
 
-func (o *HexadecaryTree) InsertColor(c color.Color) {
-    const maxDepth = 8
-    const maxColors = 256
+func (node *OctreeNode) IsLeaf() bool {
+    return node.PixelCount > 0
+}
 
-    rgba := color.RGBAModel.Convert(c).(color.RGBA)
-    r, g, b, a := int(rgba.R), int(rgba.G), int(rgba.B), int(rgba.A)
-
-    currentNode := o.root
-
-    for level := 0; level < o.colorDepth && level < maxDepth; level++ {
-        shift := maxDepth - 1 - level
-        index := ((r >> shift) & 1) << 3 |
-            ((g >> shift) & 1) << 2 |
-            ((b >> shift) & 1) << 1 |
-            ((a >> shift) & 1)
-
-        if currentNode.children[index] == nil {
-            currentNode.children[index] = &HexadecaryNode{}
-            if level < maxDepth-1 {
-                o.reducible[level+1] = currentNode.children[index]
-            }
-            if level == maxDepth-1 {
-                o.leafCount++
+func (node *OctreeNode) GetLeafNodes() []*OctreeNode {
+    var leafNodes []*OctreeNode
+    for _, child := range node.Children {
+        if child != nil {
+            if child.IsLeaf() {
+                leafNodes = append(leafNodes, child)
+            } else {
+                leafNodes = append(leafNodes, child.GetLeafNodes()...)
             }
         }
-
-        currentNode = currentNode.children[index]
     }
-
-    if !currentNode.isLeaf {
-        currentNode.isLeaf = true
-    }
-    currentNode.colorCount++
-    currentNode.redTotal += r
-    currentNode.greenTotal += g
-    currentNode.blueTotal += b
-    currentNode.alphaTotal += a
-
-    if o.leafCount > maxColors {
-        o.Reduce()
-    }
+    return leafNodes
 }
 
-func (o *HexadecaryTree) Reduce() {
-	for o.leafCount > 256 {
-		var levelToReduce int
-		for i := len(o.reducible) - 1; i >= 0; i-- {
-			if o.reducible[i] != nil {
-				levelToReduce = i
-				break
-			}
-		}
-		nodeToReduce := o.reducible[levelToReduce]
-		if nodeToReduce == nil {
-			return
-		}
-		o.reducible[levelToReduce] = nil
-		redTotal, greenTotal, blueTotal, alphaTotal, colorCount := 0, 0, 0, 0, 0
-		for i, child := range nodeToReduce.children {
-			if child != nil {
-				redTotal += child.redTotal
-				greenTotal += child.greenTotal
-				blueTotal += child.blueTotal
-				alphaTotal += child.alphaTotal
-				colorCount += child.colorCount
-				o.leafCount--
-				nodeToReduce.children[i] = nil
-			}
-		}
-		nodeToReduce.isLeaf = true
-		nodeToReduce.redTotal = redTotal
-		nodeToReduce.greenTotal = greenTotal
-		nodeToReduce.blueTotal = blueTotal
-		nodeToReduce.alphaTotal = alphaTotal
-		nodeToReduce.colorCount = colorCount
-		o.leafCount++
-	}
-}
-
-func (o *HexadecaryTree) BuildPalette() {
-	o.palette = make([]color.Color, 0, 256)
-	o.buildPaletteRecursive(o.root)
-}
-
-func (o *HexadecaryTree) buildPaletteRecursive(node *HexadecaryNode) {
-	if node == nil {
-		return
-	}
-	if node.isLeaf {
-		if len(o.palette) >= 256 {
-			return
-		}
-		averageColor := color.RGBA{
-			R: uint8(node.redTotal / node.colorCount),
-			G: uint8(node.greenTotal / node.colorCount),
-			B: uint8(node.blueTotal / node.colorCount),
-			A: uint8(node.alphaTotal / node.colorCount),
-		}
-		node.paletteIndex = len(o.palette)
-		o.palette = append(o.palette, averageColor)
-	} else {
-		for _, child := range node.children {
-			o.buildPaletteRecursive(child)
-		}
-	}
-}
-
-func (o *HexadecaryTree) GetPaletteIndex(c color.Color) int {
-    rgba := color.RGBAModel.Convert(c).(color.RGBA)
-    r, g, b, a := int(rgba.R), int(rgba.G), int(rgba.B), int(rgba.A)
-
-    currentNode := o.root
-    for level := 0; level < o.colorDepth; level++ {
-        shift := 7 - level
-        index := ((r >> shift) & 1) << 3 |
-            ((g >> shift) & 1) << 2 |
-            ((b >> shift) & 1) << 1 |
-            ((a >> shift) & 1)
-
-        if currentNode.children[index] == nil {
-            break
+func (node *OctreeNode) GetNodesPixelCount() int {
+    sumCount := node.PixelCount
+    for _, child := range node.Children {
+        if child != nil {
+            sumCount += child.PixelCount
         }
-        currentNode = currentNode.children[index]
     }
+    return sumCount
+}
 
-    if currentNode.isLeaf {
-        return currentNode.paletteIndex
+func (node *OctreeNode) AddColor(color Color, level int, parent *OctreeQuantizer) {
+    if level >= MaxDepth {
+        node.Color.Red += color.Red
+        node.Color.Green += color.Green
+        node.Color.Blue += color.Blue
+        node.PixelCount++
+        return
     }
+    index := node.GetColorIndexForLevel(color, level)
+    if node.Children[index] == nil {
+        node.Children[index] = NewOctreeNode(level, parent)
+    }
+    node.Children[index].AddColor(color, level+1, parent)
+}
 
+func (node *OctreeNode) GetPaletteIndex(color Color, level int) int {
+    if node.IsLeaf() {
+        return node.PaletteIndex
+    }
+    index := node.GetColorIndexForLevel(color, level)
+    if node.Children[index] != nil {
+        return node.Children[index].GetPaletteIndex(color, level+1)
+    }
+    for _, child := range node.Children {
+        if child != nil {
+            return child.GetPaletteIndex(color, level+1)
+        }
+    }
     return 0
 }
 
-func (o *HexadecaryTree) ConvertToPaletted(img image.Image) *image.Paletted {
-	bounds := img.Bounds()
-	palettedImage := image.NewPaletted(bounds, o.palette)
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			colorIndex := o.GetPaletteIndex(img.At(x, y))
-			palettedImage.SetColorIndex(x, y, uint8(colorIndex))
-		}
-	}
-	return palettedImage
+func (node *OctreeNode) RemoveLeaves() int {
+    result := 0
+    for i := range node.Children {
+        if node.Children[i] != nil {
+            node.Color.Red += node.Children[i].Color.Red
+            node.Color.Green += node.Children[i].Color.Green
+            node.Color.Blue += node.Children[i].Color.Blue
+            node.PixelCount += node.Children[i].PixelCount
+            result++
+        }
+    }
+    return result - 1
+}
+
+func (node *OctreeNode) GetColorIndexForLevel(color Color, level int) int {
+    index := 0
+    mask := 0x80 >> level
+    if color.Red&mask != 0 {
+        index |= 4
+    }
+    if color.Green&mask != 0 {
+        index |= 2
+    }
+    if color.Blue&mask != 0 {
+        index |= 1
+    }
+    return index
+}
+
+func (node *OctreeNode) GetColor() Color {
+    if node.PixelCount == 0 {
+        return Color{0, 0, 0}
+    }
+    return Color{
+        Red:   node.Color.Red / node.PixelCount,
+        Green: node.Color.Green / node.PixelCount,
+        Blue:  node.Color.Blue / node.PixelCount,
+    }
+}
+
+func NewOctreeQuantizer() *OctreeQuantizer {
+    quantizer := &OctreeQuantizer{
+        Levels: make(map[int][]*OctreeNode),
+    }
+    quantizer.Root = NewOctreeNode(0, quantizer)
+    return quantizer
+}
+
+func (quantizer *OctreeQuantizer) GetLeaves() []*OctreeNode {
+    return quantizer.Root.GetLeafNodes()
+}
+
+func (quantizer *OctreeQuantizer) AddLevelNode(level int, node *OctreeNode) {
+    quantizer.Levels[level] = append(quantizer.Levels[level], node)
+}
+
+func (quantizer *OctreeQuantizer) AddColor(color Color) {
+    quantizer.Root.AddColor(color, 0, quantizer)
+}
+
+func (quantizer *OctreeQuantizer) MakePalette(colorCount int) []Color {
+    var palette []Color
+    paletteIndex := 0
+    leafCount := len(quantizer.GetLeaves())
+    for level := MaxDepth - 1; level >= 0; level-- {
+        if nodes, exists := quantizer.Levels[level]; exists {
+            for _, node := range nodes {
+                leafCount -= node.RemoveLeaves()
+                if leafCount <= colorCount {
+                    break
+                }
+            }
+            if leafCount <= colorCount {
+                break
+            }
+            quantizer.Levels[level] = nil
+        }
+    }
+    for _, node := range quantizer.GetLeaves() {
+        if paletteIndex >= colorCount {
+            break
+        }
+        if node.IsLeaf() {
+            palette = append(palette, node.GetColor())
+            node.PaletteIndex = paletteIndex
+            paletteIndex++
+        }
+    }
+    return palette
+}
+
+func (quantizer *OctreeQuantizer) GetPaletteIndex(color Color) int {
+    return quantizer.Root.GetPaletteIndex(color, 0)
 }
 
 func main() {
-    // start := time.Now()
-
-    file, err := os.Open("rem.png")
+    // Load the image
+    file, err := os.Open("input.png")
     if err != nil {
-        panic(err)
+        fmt.Println("Error opening image:", err)
+        return
     }
     defer file.Close()
+
     img, err := png.Decode(file)
+	if err != nil {
+        fmt.Println("Error decoding image:", err)
+        return
+    }
+
+    // Create an OctreeQuantizer
+    quantizer := NewOctreeQuantizer()
+
+    // Add colors from the image to the quantizer
+    bounds := img.Bounds()
+    for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+        for x := bounds.Min.X; x < bounds.Max.X; x++ {
+            r, g, b, _ := img.At(x, y).RGBA()
+            color := Color{
+                Red:   int(r >> 8),
+                Green: int(g >> 8),
+                Blue:  int(b >> 8),
+            }
+            quantizer.AddColor(color)
+        }
+    }
+
+    // Generate the color palette
+    colorCount := 256 // Number of colors in the palette
+    palette := quantizer.MakePalette(colorCount)
+
+    // Create a new image with the quantized colors
+    quantizedImg := image.NewRGBA(bounds)
+    for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+        for x := bounds.Min.X; x < bounds.Max.X; x++ {
+            r, g, b, _ := img.At(x, y).RGBA()
+            color_palette := Color{
+                Red:   int(r >> 8),
+                Green: int(g >> 8),
+                Blue:  int(b >> 8),
+            }
+            paletteIndex := quantizer.GetPaletteIndex(color_palette)
+            quantizedColor := palette[paletteIndex]
+            quantizedImg.Set(x, y, color.RGBA{
+                R: uint8(quantizedColor.Red),
+                G: uint8(quantizedColor.Green),
+                B: uint8(quantizedColor.Blue),
+                A: 255,
+            })
+        }
+    }
+
+    // Save the quantized image
+    outputFile, err := os.Create("output.png")
     if err != nil {
-        panic(err)
+        fmt.Println("Error creating output image:", err)
+        return
     }
-    // fmt.Printf("Image loading took: %v\n", time.Since(start))
+    defer outputFile.Close()
 
-    // octreeStart := time.Now()
-    hexaTree := NewHexaTree(1)
-	BuildTree(img, hexaTree)
-
-    // fmt.Printf("hexaTree insertion took: %v\n", time.Since(hexaTreeStart))
-
-    // buildPaletteStart := time.Now()
-    hexaTree.BuildPalette()
-    // fmt.Printf("Building palette took: %v\n", time.Since(buildPaletteStart))
-/*
-    fmt.Printf("Palette built with %d colors\n", len(hexaTree.palette))
-    for i, color := range hexaTree.palette {
-        fmt.Printf("Palette[%d] = %v\n", i, color)
-    }
-		*/
-
-    // convertStart := time.Now()
-    palettedImage := hexaTree.ConvertToPaletted(img)
-    // fmt.Printf("Converting to paletted image took: %v\n", time.Since(convertStart))
-
-    // saveStart := time.Now()
-    outFile, err := os.Create("rem_paletted.png")
+    err = png.Encode(outputFile, quantizedImg)
     if err != nil {
-        panic(err)
+        fmt.Println("Error encoding output image:", err)
+        return
     }
-    defer outFile.Close()
-    err = png.Encode(outFile, palettedImage)
-    if err != nil {
-        panic(err)
-    }
-    // fmt.Printf("Saving paletted image took: %v\n", time.Since(saveStart))
 
-    // fmt.Printf("Total execution time: %v\n", time.Since(start))
+    fmt.Println("Quantized image saved as output.png")
+
+// Create a palette image with larger pixels
+pixelSize := 10
+paletteImg := image.NewRGBA(image.Rect(0, 0, 8*pixelSize, ((colorCount+7)/8)*pixelSize))
+for i, c := range palette {
+    x := (i % 8) * pixelSize
+    y := (i / 8) * pixelSize
+    for dx := 0; dx < pixelSize; dx++ {
+        for dy := 0; dy < pixelSize; dy++ {
+            paletteImg.Set(x+dx, y+dy, color.RGBA{
+                R: uint8(c.Red),
+                G: uint8(c.Green),
+                B: uint8(c.Blue),
+                A: 255,
+            })
+        }
+    }
+}
+    // Save the palette image
+    paletteFile, err := os.Create("palette.png")
+    if err != nil {
+        fmt.Println("Error creating palette image:", err)
+        return
+    }
+    defer paletteFile.Close()
+
+    err = png.Encode(paletteFile, paletteImg)
+    if err != nil {
+        fmt.Println("Error encoding palette image:", err)
+        return
+    }
+
+    fmt.Println("Palette image saved as palette.png")
 }

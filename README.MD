@@ -1,110 +1,158 @@
-# Hexadecary Tree Color Quantization in Go
-(Faster than golang's std brute force approach)
+# Octree Color Quantizer
 
-This Go program demonstrates the implementation of a hexadecary tree (16-ary tree) color quantization algorithm. The algorithm is designed to reduce the number of colors in an image more efficiently than the traditional octree method, making it suitable for formats that support a limited color palette, such as GIFs or 8-bit PNGs. The goal is to preserve the visual fidelity of the original image as much as possible while reducing the color count.
+This project implements an octree-based color quantization algorithm in Go to reduce the number of colors in an image while preserving visual quality. The octree color quantizer helps create a palette of colors from an input image and then maps the colors in the image to this palette, which can be useful for tasks like image compression and color reduction.
 
 ## Features
 
-- **Hexadecary Tree Color Quantization**: More efficient color reduction in images compared to octree quantization.
-- **Palette Generation**: Builds a color palette that closely matches the original image's colors.
-- **Image Conversion**: Converts images to use the generated palette, resulting in smaller file sizes without significant loss of quality.
+- **Color Quantization**: Reduces the number of colors in an image using an octree-based quantization algorithm.
+- **Palette Generation**: Generates a color palette with a specified number of colors.
+- **Image Conversion**: Converts an input image to use the generated palette.
+- **Palette Visualization**: Creates and saves an image showing the generated color palette.
 
-## How It Works
+## Code Overview
 
-The program constructs a hexadecary tree where each node represents a color or a range of colors. As colors are inserted into the tree, it grows dynamically, with each level of the tree representing a deeper color precision. When the tree exceeds a predefined number of colors, it is reduced by merging nodes, thus pruning the tree and reducing the color count.
-
-## Usage
-
-1. **Setting Up**: Ensure you have Go installed on your system.
-2. **Running the Program**: Use the command `go run main.go` to execute the program. The input image should be named `input.png` and placed in the same directory as the program.
-3. **Output**: The program generates a new image named `output_paletted.png`, which uses the reduced color palette.
-
-## Implementation Details
-
-- **HexadecaryTreeNode**: Represents a node in the hexadecary tree. Leaf nodes store color information, while non-leaf nodes are used for navigation.
-- **HexadecaryTree**: Manages the hexadecary tree structure, including insertion of colors, reduction of the tree, and palette generation.
-- **Main Function**: Handles image loading, hexadecary tree construction, palette building, image conversion, and saving the converted image.
-
-
-## Sampe Usage
+### Usage
 
 ```go
+func main() {
+    // Load the image
     file, err := os.Open("input.png")
     if err != nil {
-        panic(err)
+        fmt.Println("Error opening image:", err)
+        return
     }
-
     defer file.Close()
+
     img, err := png.Decode(file)
     if err != nil {
-        panic(err)
+        fmt.Println("Error decoding image:", err)
+        return
     }
 
-    hexaTree := NewHexaTree(4)
+    // Create an OctreeQuantizer
+    quantizer := NewOctreeQuantizer()
 
-    BuildTree(img, hexaTree)
+    // Add colors from the image to the quantizer
+    bounds := img.Bounds()
+    for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+        for x := bounds.Min.X; x < bounds.Max.X; x++ {
+            r, g, b, _ := img.At(x, y).RGBA()
+            color := Color{
+                Red:   int(r >> 8),
+                Green: int(g >> 8),
+                Blue:  int(b >> 8),
+            }
+            quantizer.AddColor(color)
+        }
+    }
 
-    hexaTree.BuildPalette()
+    // Generate the color palette
+    colorCount := 64 // Number of colors in the palette
+    palette := quantizer.MakePalette(colorCount)
 
-    palettedImage := hexaTree.ConvertToPaletted(img)
+    // Create a new image with the quantized colors
+    quantizedImg := image.NewRGBA(bounds)
+    for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+        for x := bounds.Min.X; x < bounds.Max.X; x++ {
+            r, g, b, _ := img.At(x, y).RGBA()
+            color_palette := Color{
+                Red:   int(r >> 8),
+                Green: int(g >> 8),
+                Blue:  int(b >> 8),
+            }
+            paletteIndex := quantizer.GetPaletteIndex(color_palette)
+            quantizedColor := palette[paletteIndex]
+            quantizedImg.Set(x, y, color.RGBA{
+                R: uint8(quantizedColor.Red),
+                G: uint8(quantizedColor.Green),
+                B: uint8(quantizedColor.Blue),
+                A: 255,
+            })
+        }
+    }
 
-    outFile, err := os.Create("output.png")
+    // Save the quantized image
+    outputFile, err := os.Create("output.png")
     if err != nil {
-        panic(err)
+        fmt.Println("Error creating output image:", err)
+        return
     }
-    defer outFile.Close()
-    err = png.Encode(outFile, palettedImage)
+    defer outputFile.Close()
+
+    err = png.Encode(outputFile, quantizedImg)
     if err != nil {
-        panic(err)
+        fmt.Println("Error encoding output image:", err)
+        return
     }
+
+    fmt.Println("Quantized image saved as output.png")
+
+// Create a palette image with larger pixels
+pixelSize := 10
+paletteImg := image.NewRGBA(image.Rect(0, 0, 8*pixelSize, ((colorCount+7)/8)*pixelSize))
+for i, c := range palette {
+    x := (i % 8) * pixelSize
+    y := (i / 8) * pixelSize
+    for dx := 0; dx < pixelSize; dx++ {
+        for dy := 0; dy < pixelSize; dy++ {
+            paletteImg.Set(x+dx, y+dy, color.RGBA{
+                R: uint8(c.Red),
+                G: uint8(c.Green),
+                B: uint8(c.Blue),
+                A: 255,
+            })
+        }
+    }
+}
+    // Save the palette image
+    paletteFile, err := os.Create("palette.png")
+    if err != nil {
+        fmt.Println("Error creating palette image:", err)
+        return
+    }
+    defer paletteFile.Close()
+
+    err = png.Encode(paletteFile, paletteImg)
+    if err != nil {
+        fmt.Println("Error encoding palette image:", err)
+        return
+    }
+
+    fmt.Println("Palette image saved as palette.png")
+}
 ```
 
-## Image Examples and Performance
+### Key Components
 
-Below are examples showing the results of the octree color quantization algorithm at different tree depths, along with their performance metrics. The original image size is 171kb.
+- **`Color`**: Represents a color with Red, Green, and Blue components.
+- **`OctreeNode`**: Represents a node in the octree. Each node can have up to 8 children.
+- **`OctreeQuantizer`**: Manages the octree and provides methods to add colors, generate palettes, and get color indices.
+
+### Functions
+
+- **`NewColor(red, green, blue int) Color`**: Creates a new `Color` instance.
+- **`NewOctreeNode(level int, parent *OctreeQuantizer) *OctreeNode`**: Creates a new `OctreeNode`.
+- **`AddColor(color Color)`**: Adds a color to the quantizer.
+- **`MakePalette(colorCount int) []Color`**: Generates a color palette with the specified number of colors.
+- **`GetPaletteIndex(color Color) int`**: Gets the index of the color in the palette.
+- 
+## Example
 
 ### Original Image
+The original image is located at `examples/alice`. It is 2.27MB in size and contains 64 colors.
 
-![Original Image](examples/original.png)
+![Original Image](examples/alice.png)
 
-- **Size**: 171kb
+### Quantized Image
+The quantized image is located at `examples/quantized_alice`. It is 0.51MB in size and contains 64 colors.
 
-### Depth 1
+![Quantized Image](examples/quantized_alice.png)
 
-![Depth 1](examples/depth_1.png)
+### Quantized Palette
+The palette used for the quantized image is located at `examples/quantized_palette`.
 
-- **Total execution time**: 19.0033ms
-- **Reduced size**: 10kb
-
-### Depth 2
-
-![Depth 2](examples/depth_2.png)
-
-- **Total execution time**: 19.0033ms
-- **Reduced size**: 17kb
-
-### Depth 3
-
-![Depth 3](examples/depth_3.png)
-
-- **Total execution time**: 32.7629ms
-- **Reduced size**: 27kb
-
-### Depth 4
-
-![Depth 4](examples/depth_4.png)
-
-- **Total execution time**: 45.066ms
-- **Reduced size**: 29kb
-
-## Dependencies
-
-- The program uses the standard Go library for image processing (`image`, `image/color`, `image/png`).
+![Quantized Palette](examples/quantized_palette.png)
 
 ## Contributing
 
-Contributions to improve the algorithm or extend the functionality are welcome. Please feel free to fork the repository, make your changes, and submit a pull request.
-
-## License
-
-This project is open-sourced under the MIT License. See the LICENSE file for more details.
+Feel free to submit issues, pull requests, and suggestions to improve the project.
