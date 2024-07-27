@@ -139,7 +139,7 @@ for i, c := range palette {
 ## Example
 
 ### Original Image
-The original image is located at `examples/alice`. It is 2.27MB in size and contains 64 colors.
+The original image is located at `examples/alice`. It is 2.27MB in size.
 
 ![Original Image](examples/alice.png)
 
