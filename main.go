@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"os"
+	"time"
 )
 
 type Color struct {
@@ -194,7 +196,92 @@ func (quantizer *OctreeQuantizer) GetPaletteIndex(color Color) int {
     return quantizer.Root.GetPaletteIndex(color, 0)
 }
 
-func main() {
+func forGif() {
+    start := time.Now()
+
+    // Open the GIF file
+    file, err := os.Open("dance.gif")
+    if err != nil {
+        fmt.Println("Error opening GIF file:", err)
+        return
+    }
+    defer file.Close()
+
+    // Decode the GIF
+    gifImg, err := gif.DecodeAll(file)
+    if err != nil {
+        fmt.Println("Error decoding GIF:", err)
+        return
+    }
+
+    // Initialize the octree quantizer
+    quantizer := NewOctreeQuantizer()
+
+    // Add colors from each frame to the quantizer
+    for _, frame := range gifImg.Image {
+        bounds := frame.Bounds()
+        for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+            for x := bounds.Min.X; x < bounds.Max.X; x++ {
+                r, g, b, _ := frame.At(x, y).RGBA()
+                color := NewColor(int(r>>8), int(g>>8), int(b>>8))
+                quantizer.AddColor(color)
+            }
+        }
+    }
+
+    // Generate the palette
+    colorCount := 64
+    palette := quantizer.MakePalette(colorCount)
+
+    // Convert []Color to color.Palette
+    var colorPalette color.Palette
+    for _, c := range palette {
+        colorPalette = append(colorPalette, color.RGBA{
+            R: uint8(c.Red),
+            G: uint8(c.Green),
+            B: uint8(c.Blue),
+            A: 255,
+        })
+    }
+
+    // Create a new GIF with quantized frames
+    newGif := &gif.GIF{}
+    for i, frame := range gifImg.Image {
+        bounds := frame.Bounds()
+        quantizedFrame := image.NewPaletted(bounds, colorPalette)
+        for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+            for x := bounds.Min.X; x < bounds.Max.X; x++ {
+                r, g, b, _ := frame.At(x, y).RGBA()
+                color := NewColor(int(r>>8), int(g>>8), int(b>>8))
+                index := quantizer.GetPaletteIndex(color)
+                quantizedFrame.SetColorIndex(x, y, uint8(index))
+            }
+        }
+        newGif.Image = append(newGif.Image, quantizedFrame)
+        newGif.Delay = append(newGif.Delay, gifImg.Delay[i])
+    }
+
+    // Save the new GIF
+    outputFile, err := os.Create("output.gif")
+    if err != nil {
+        fmt.Println("Error creating output GIF file:", err)
+        return
+    }
+    defer outputFile.Close()
+
+    err = gif.EncodeAll(outputFile, newGif)
+    if err != nil {
+        fmt.Println("Error encoding GIF:", err)
+        return
+    }
+
+    fmt.Println("Quantized GIF saved as output.gif")
+
+    elapsed := time.Since(start)
+    fmt.Printf("Processing took %s\n", elapsed)
+}
+
+func forImage() {
     // Load the image
     file, err := os.Open("input.png")
     if err != nil {
