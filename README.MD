@@ -14,7 +14,7 @@ This project implements an octree-based color quantization algorithm in Go to re
 ### Usage
 
 ```go
-func main() {
+func forImages() {
     // Load the image
     file, err := os.Open("input.png")
     if err != nil {
@@ -36,29 +36,32 @@ func main() {
     bounds := img.Bounds()
     for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
         for x := bounds.Min.X; x < bounds.Max.X; x++ {
-            r, g, b, _ := img.At(x, y).RGBA()
+            r, g, b, a := img.At(x, y).RGBA()
             color := Color{
                 Red:   int(r >> 8),
                 Green: int(g >> 8),
                 Blue:  int(b >> 8),
+                Alpha: int(a >> 8),
+
             }
             quantizer.AddColor(color)
         }
     }
 
     // Generate the color palette
-    colorCount := 64 // Number of colors in the palette
+    colorCount := 256 // Number of colors in the palette
     palette := quantizer.MakePalette(colorCount)
 
     // Create a new image with the quantized colors
     quantizedImg := image.NewRGBA(bounds)
     for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
         for x := bounds.Min.X; x < bounds.Max.X; x++ {
-            r, g, b, _ := img.At(x, y).RGBA()
+            r, g, b, a := img.At(x, y).RGBA()
             color_palette := Color{
                 Red:   int(r >> 8),
                 Green: int(g >> 8),
                 Blue:  int(b >> 8),
+                Alpha: int(a >> 8),
             }
             paletteIndex := quantizer.GetPaletteIndex(color_palette)
             quantizedColor := palette[paletteIndex]
@@ -66,7 +69,7 @@ func main() {
                 R: uint8(quantizedColor.Red),
                 G: uint8(quantizedColor.Green),
                 B: uint8(quantizedColor.Blue),
-                A: 255,
+                A: uint8(quantizedColor.Alpha),
             })
         }
     }
@@ -99,7 +102,7 @@ for i, c := range palette {
                 R: uint8(c.Red),
                 G: uint8(c.Green),
                 B: uint8(c.Blue),
-                A: 255,
+                A: uint8(c.Alpha),
             })
         }
     }
@@ -135,20 +138,23 @@ for i, c := range palette {
 - **`AddColor(color Color)`**: Adds a color to the quantizer.
 - **`MakePalette(colorCount int) []Color`**: Generates a color palette with the specified number of colors.
 - **`GetPaletteIndex(color Color) int`**: Gets the index of the color in the palette.
-- 
+  
 ## Example
 
 ### Original Image
+
 The original image is located at `examples/alice`. It is 2.27MB in size.
 
 ![Original Image](examples/alice.png)
 
 ### Quantized Image
+
 The quantized image is located at `examples/quantized_alice`. It is 0.51MB in size and contains 64 colors.
 
 ![Quantized Image](examples/quantized_alice.png)
 
 ### Quantized Palette
+
 The palette used for the quantized image is located at `examples/quantized_palette`.
 
 ![Quantized Palette](examples/quantized_palette.png)

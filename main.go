@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/gif"
 	"image/png"
 	"os"
@@ -11,7 +12,7 @@ import (
 )
 
 type Color struct {
-    Red, Green, Blue int
+    Red, Green, Blue, Alpha int
 }
 
 type OctreeNode struct {
@@ -28,13 +29,13 @@ type OctreeQuantizer struct {
     Root   *OctreeNode
 }
 
-func NewColor(red, green, blue int) Color {
-    return Color{Red: red, Green: green, Blue: blue}
+func NewColor(red, green, blue, alpha int) Color {
+    return Color{Red: red, Green: green, Blue: blue, Alpha: alpha}
 }
 
 func NewOctreeNode(level int, parent *OctreeQuantizer) *OctreeNode {
     node := &OctreeNode{
-        Color: Color{0, 0, 0},
+        Color: Color{0, 0, 0, 0},
     }
     if level < MaxDepth-1 {
         parent.AddLevelNode(level, node)
@@ -75,6 +76,7 @@ func (node *OctreeNode) AddColor(color Color, level int, parent *OctreeQuantizer
         node.Color.Red += color.Red
         node.Color.Green += color.Green
         node.Color.Blue += color.Blue
+        node.Color.Alpha += color.Alpha
         node.PixelCount++
         return
     }
@@ -108,6 +110,7 @@ func (node *OctreeNode) RemoveLeaves() int {
             node.Color.Red += node.Children[i].Color.Red
             node.Color.Green += node.Children[i].Color.Green
             node.Color.Blue += node.Children[i].Color.Blue
+            node.Color.Alpha += node.Children[i].Color.Alpha
             node.PixelCount += node.Children[i].PixelCount
             result++
         }
@@ -132,12 +135,13 @@ func (node *OctreeNode) GetColorIndexForLevel(color Color, level int) int {
 
 func (node *OctreeNode) GetColor() Color {
     if node.PixelCount == 0 {
-        return Color{0, 0, 0}
+        return Color{0, 0, 0, 0}
     }
     return Color{
         Red:   node.Color.Red / node.PixelCount,
         Green: node.Color.Green / node.PixelCount,
         Blue:  node.Color.Blue / node.PixelCount,
+        Alpha: node.Color.Alpha / node.PixelCount,
     }
 }
 
@@ -196,11 +200,24 @@ func (quantizer *OctreeQuantizer) GetPaletteIndex(color Color) int {
     return quantizer.Root.GetPaletteIndex(color, 0)
 }
 
-func forGif() {
+func convertToColorPalette(palette []Color) color.Palette {
+    var colorPalette color.Palette
+    for _, c := range palette {
+        colorPalette = append(colorPalette, color.RGBA{
+            R: uint8(c.Red),
+            G: uint8(c.Green),
+            B: uint8(c.Blue),
+            A: uint8(c.Alpha),
+        })
+    }
+    return colorPalette
+}
+
+func forGifs() {
     start := time.Now()
 
     // Open the GIF file
-    file, err := os.Open("dance.gif")
+    file, err := os.Open("mahjong.gif")
     if err != nil {
         fmt.Println("Error opening GIF file:", err)
         return
@@ -222,8 +239,8 @@ func forGif() {
         bounds := frame.Bounds()
         for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
             for x := bounds.Min.X; x < bounds.Max.X; x++ {
-                r, g, b, _ := frame.At(x, y).RGBA()
-                color := NewColor(int(r>>8), int(g>>8), int(b>>8))
+                r, g, b, a := frame.At(x, y).RGBA()
+                color := NewColor(int(r>>8), int(g>>8), int(b>>8), int(a>>8))
                 quantizer.AddColor(color)
             }
         }
@@ -234,31 +251,49 @@ func forGif() {
     palette := quantizer.MakePalette(colorCount)
 
     // Convert []Color to color.Palette
-    var colorPalette color.Palette
-    for _, c := range palette {
-        colorPalette = append(colorPalette, color.RGBA{
-            R: uint8(c.Red),
-            G: uint8(c.Green),
-            B: uint8(c.Blue),
-            A: 255,
-        })
-    }
+    colorPalette := convertToColorPalette(palette)
+    
+    // Add a transparent color to the end of the palette
+    colorPalette = append(colorPalette, color.RGBA{0, 0, 0, 0})
+    transparentIndex := len(colorPalette) - 1
 
     // Create a new GIF with quantized frames
     newGif := &gif.GIF{}
     for i, frame := range gifImg.Image {
         bounds := frame.Bounds()
         quantizedFrame := image.NewPaletted(bounds, colorPalette)
-        for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-            for x := bounds.Min.X; x < bounds.Max.X; x++ {
-                r, g, b, _ := frame.At(x, y).RGBA()
-                color := NewColor(int(r>>8), int(g>>8), int(b>>8))
-                index := quantizer.GetPaletteIndex(color)
-                quantizedFrame.SetColorIndex(x, y, uint8(index))
+
+        // Handle disposal method
+        if i > 0 {
+            switch gifImg.Disposal[i-1] {
+            case gif.DisposalPrevious:
+                draw.Draw(quantizedFrame, bounds, newGif.Image[i-1], image.Point{}, draw.Over)
+            case gif.DisposalBackground:
+                for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+                    for x := bounds.Min.X; x < bounds.Max.X; x++ {
+                        quantizedFrame.SetColorIndex(x, y, uint8(transparentIndex))
+                    }
+                }
             }
         }
+
+        // Quantize frame
+        for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+            for x := bounds.Min.X; x < bounds.Max.X; x++ {
+                r, g, b, a := frame.At(x, y).RGBA()
+                color := NewColor(int(r>>8), int(g>>8), int(b>>8), int(a>>8))
+                if a == 0 {
+                    quantizedFrame.SetColorIndex(x, y, uint8(transparentIndex))
+                } else {
+                    index := quantizer.GetPaletteIndex(color)
+                    quantizedFrame.SetColorIndex(x, y, uint8(index))
+                }
+            }
+        }
+
         newGif.Image = append(newGif.Image, quantizedFrame)
         newGif.Delay = append(newGif.Delay, gifImg.Delay[i])
+        newGif.Disposal = append(newGif.Disposal, gifImg.Disposal[i])
     }
 
     // Save the new GIF
@@ -281,7 +316,8 @@ func forGif() {
     fmt.Printf("Processing took %s\n", elapsed)
 }
 
-func forImage() {
+
+func forImages() {
     // Load the image
     file, err := os.Open("input.png")
     if err != nil {
@@ -303,11 +339,13 @@ func forImage() {
     bounds := img.Bounds()
     for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
         for x := bounds.Min.X; x < bounds.Max.X; x++ {
-            r, g, b, _ := img.At(x, y).RGBA()
+            r, g, b, a := img.At(x, y).RGBA()
             color := Color{
                 Red:   int(r >> 8),
                 Green: int(g >> 8),
                 Blue:  int(b >> 8),
+                Alpha: int(a >> 8),
+
             }
             quantizer.AddColor(color)
         }
@@ -321,11 +359,12 @@ func forImage() {
     quantizedImg := image.NewRGBA(bounds)
     for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
         for x := bounds.Min.X; x < bounds.Max.X; x++ {
-            r, g, b, _ := img.At(x, y).RGBA()
+            r, g, b, a := img.At(x, y).RGBA()
             color_palette := Color{
                 Red:   int(r >> 8),
                 Green: int(g >> 8),
                 Blue:  int(b >> 8),
+                Alpha: int(a >> 8),
             }
             paletteIndex := quantizer.GetPaletteIndex(color_palette)
             quantizedColor := palette[paletteIndex]
@@ -333,7 +372,7 @@ func forImage() {
                 R: uint8(quantizedColor.Red),
                 G: uint8(quantizedColor.Green),
                 B: uint8(quantizedColor.Blue),
-                A: 255,
+                A: uint8(quantizedColor.Alpha),
             })
         }
     }
@@ -366,7 +405,7 @@ for i, c := range palette {
                 R: uint8(c.Red),
                 G: uint8(c.Green),
                 B: uint8(c.Blue),
-                A: 255,
+                A: uint8(c.Alpha),
             })
         }
     }
@@ -387,3 +426,4 @@ for i, c := range palette {
 
     fmt.Println("Palette image saved as palette.png")
 }
+    
