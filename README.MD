@@ -13,6 +13,19 @@ This project implements an octree-based color quantization algorithm in Go to re
 
 ### Usage
 
+for running the code, 
+
+
+```go
+go run main.go                       # Uses defaults: input.png, depth=8, colors=256
+go run main.go path/to/image.png     # Process specific image with default settings
+go run main.go path/to/image.gif     # Process specific GIF with default settings
+go run main.go path/to/image.png 4   # Process image with depth=4, colors=16
+go run main.go path/to/image.png 6 50 # Process image with depth=6, colors=50
+go run main.go 4 32                  # Process default image with depth=4, colors=32
+```
+
+
 ```go
 func forImages() {
     // Load the image
